@@ -1,6 +1,6 @@
 dnl AC_INIT does not take a macro as a version nr: set it separately! - Bram
-AC_INIT([ODE],[0.13.1],[ode@ode.org])
-ODE_VERSION=0.13.1
+AC_INIT([ODE],[0.14],[ode@ode.org])
+ODE_VERSION=0.14
 AC_SUBST(ODE_VERSION)
 
 # Those are instructions from the Libtool manual:
@@ -22,9 +22,9 @@ AC_SUBST(ODE_VERSION)
 #
 #  6. If any interfaces have been removed since the last public release,
 #     then set AGE to 0.
-CURRENT=5
+CURRENT=6
 REVISION=0
-AGE=1
+AGE=0
 
 AC_ARG_ENABLE(version-info,
         AS_HELP_STRING([--disable-version-info],
@@ -440,7 +440,7 @@ libccd_source=internal
 
 AC_ARG_WITH(libccd,
         [AS_HELP_STRING([--with-libccd=@<:@internal|system@:>@],
-                [use the specified libccd @<:@default=internal@:>@])],
+                [use the specified libccd @<:@default=system@:>@])],
         [libccd_source=$withval],
         [libccd_source=system])
 
@@ -452,7 +452,13 @@ then
     fi
 fi
 
-AC_CONFIG_SUBDIRS([libccd])
+if test x$use_libccd = xyes
+then
+     if test x$libccd_source = xinternal
+     then
+        AC_CONFIG_SUBDIRS([libccd])
+     fi
+fi
 
 AM_CONDITIONAL(LIBCCD, test x$use_libccd != xno)
 AM_CONDITIONAL(LIBCCD_INTERNAL, test x$libccd_source = xinternal)
