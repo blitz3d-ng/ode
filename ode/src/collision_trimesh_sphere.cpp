@@ -249,38 +249,42 @@ int dCollideSTL(dxGeom* g1, dxGeom* SphereGeom, int Flags, dContactGeom* Contact
 
     dxTriMesh* TriMesh = (dxTriMesh*)g1;
 
-    // Init
-    const dVector3& TLPosition = *(const dVector3*)dGeomGetPosition(TriMesh);
-    const dMatrix3& TLRotation = *(const dMatrix3*)dGeomGetRotation(TriMesh);
-
     const unsigned uiTLSKind = TriMesh->getParentSpaceTLSKind();
     dIASSERT(uiTLSKind == SphereGeom->getParentSpaceTLSKind()); // The colliding spaces must use matching cleanup method
     TrimeshCollidersCache *pccColliderCache = GetTrimeshCollidersCache(uiTLSKind);
     SphereCollider& Collider = pccColliderCache->_SphereCollider;
 
+    const dVector3& TLPosition = *(const dVector3*)dGeomGetPosition(TriMesh);
+    const dMatrix3& TLRotation = *(const dMatrix3*)dGeomGetRotation(TriMesh);
+
+    Matrix4x4 MeshMatrix;
+    const dVector3 ZeroVector3 = { REAL(0.0), };
+    MakeMatrix(ZeroVector3, TLRotation, MeshMatrix);
+
     const dVector3& Position = *(const dVector3*)dGeomGetPosition(SphereGeom);
     dReal Radius = dGeomSphereGetRadius(SphereGeom);
 
+    dVector3 OffsetPosition;
+    dSubtractVectors3(OffsetPosition, Position, TLPosition);
+
     // Sphere
     Sphere Sphere;
-    Sphere.mCenter.x = Position[0];
-    Sphere.mCenter.y = Position[1];
-    Sphere.mCenter.z = Position[2];
+    Sphere.mCenter.Set(OffsetPosition[0], OffsetPosition[1], OffsetPosition[2]);
     Sphere.mRadius = Radius;
 
-    Matrix4x4 amatrix;
 
     // TC results
     if (TriMesh->doSphereTC) {
         dxTriMesh::SphereTC* sphereTC = 0;
-        for (int i = 0; i < TriMesh->SphereTCCache.size(); i++){
+        const int sphereCacheSize = TriMesh->SphereTCCache.size();
+        for (int i = 0; i != sphereCacheSize; i++){
             if (TriMesh->SphereTCCache[i].Geom == SphereGeom){
                 sphereTC = &TriMesh->SphereTCCache[i];
                 break;
             }
         }
 
-        if (!sphereTC){
+        if (!sphereTC) {
             TriMesh->SphereTCCache.push(dxTriMesh::SphereTC());
 
             sphereTC = &TriMesh->SphereTCCache[TriMesh->SphereTCCache.size() - 1];
@@ -289,13 +293,11 @@ int dCollideSTL(dxGeom* g1, dxGeom* SphereGeom, int Flags, dContactGeom* Contact
 
         // Intersect
         Collider.SetTemporalCoherence(true);
-        Collider.Collide(*sphereTC, Sphere, TriMesh->Data->BVTree, null, 
-            &MakeMatrix(TLPosition, TLRotation, amatrix));
+        Collider.Collide(*sphereTC, Sphere, TriMesh->Data->BVTree, null, &MeshMatrix);
     }
     else {
         Collider.SetTemporalCoherence(false);
-        Collider.Collide(pccColliderCache->defaultSphereCache, Sphere, TriMesh->Data->BVTree, null, 
-            &MakeMatrix(TLPosition, TLRotation, amatrix));
+        Collider.Collide(pccColliderCache->defaultSphereCache, Sphere, TriMesh->Data->BVTree, null, &MeshMatrix);
     }
 
     if (! Collider.GetContactStatus()) {
@@ -566,39 +568,10 @@ int dCollideSTL(dxGeom* g1, dxGeom* SphereGeom, int Flags, dContactGeom* Contact
     }
 
     GIM_CONTACT * ptrimeshcontacts = GIM_DYNARRAY_POINTER(GIM_CONTACT,trimeshcontacts);
-
     unsigned contactcount = trimeshcontacts.m_size;
-    unsigned maxcontacts = (unsigned)(Flags & NUMC_MASK);
-    if (contactcount > maxcontacts)
-    {
-        contactcount = maxcontacts;
-    }
 
-    dContactGeom* pcontact;
-    unsigned i;
-
-    for (i=0;i<contactcount;i++)
-    {
-        pcontact = SAFECONTACT(Flags, Contacts, i, Stride);
-
-        pcontact->pos[0] = ptrimeshcontacts->m_point[0];
-        pcontact->pos[1] = ptrimeshcontacts->m_point[1];
-        pcontact->pos[2] = ptrimeshcontacts->m_point[2];
-        pcontact->pos[3] = REAL(1.0);
-
-        pcontact->normal[0] = ptrimeshcontacts->m_normal[0];
-        pcontact->normal[1] = ptrimeshcontacts->m_normal[1];
-        pcontact->normal[2] = ptrimeshcontacts->m_normal[2];
-        pcontact->normal[3] = 0;
-
-        pcontact->depth = ptrimeshcontacts->m_depth;
-        pcontact->g1 = g1;
-        pcontact->g2 = SphereGeom;
-        pcontact->side1 = ptrimeshcontacts->m_feature1;
-        pcontact->side2 = -1;
-
-        ptrimeshcontacts++;
-    }
+    dxGIMCContactAccessor contactaccessor(ptrimeshcontacts, g1, SphereGeom, -1);
+    contactcount = dxGImpactContactsExportHelper::ExportMaxDepthGImpactContacts(contactaccessor, contactcount, Flags, Contacts, Stride);
 
     GIM_DYNARRAY_DESTROY(trimeshcontacts);
 
